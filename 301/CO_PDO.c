@@ -206,7 +206,7 @@ static uint32_t CO_PDOfindMap(
 
     index = (uint16_t)(map>>16);
     subIndex = (uint8_t)(map>>8);
-    dataLen = (uint8_t) map;   /* data length in bits */
+    dataLen = (uint8_t) (map & 0x000000ff);   /* data length in bits */
 
     /* data length must be byte aligned */
     if(dataLen&0x07) return CO_SDO_AB_NO_MAP;   /* Object cannot be mapped to the PDO. */
