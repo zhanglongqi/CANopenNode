@@ -204,8 +204,8 @@ static uint32_t CO_PDOfindMap(
     uint8_t objectLen;
     uint8_t attr;
 
-    index = (uint16_t)(map>>16);
-    subIndex = (uint8_t)(map>>8);
+    index = (uint16_t)((map>>16) & 0x0000ffff);
+    subIndex = (uint8_t) ((map>>8) & 0x000000ff);
     dataLen = (uint8_t) (map & 0x000000ff);   /* data length in bits */
 
     /* data length must be byte aligned */
