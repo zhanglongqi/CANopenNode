@@ -694,7 +694,11 @@ static void CO_SDO_abort(CO_SDO_t *SDO, uint32_t code){
     SDO->CANtxBuff->data[1] = SDO->ODF_arg.index & 0xFF;
     SDO->CANtxBuff->data[2] = (SDO->ODF_arg.index>>8) & 0xFF;
     SDO->CANtxBuff->data[3] = SDO->ODF_arg.subIndex;
-    CO_memcpySwap4(&SDO->CANtxBuff->data[4], &code);
+    SDO->CANtxBuff->data[4] = BREAK_UINT32(code, 0);
+    SDO->CANtxBuff->data[5] = BREAK_UINT32(code, 1);
+    SDO->CANtxBuff->data[6] = BREAK_UINT32(code, 2);
+    SDO->CANtxBuff->data[7] = BREAK_UINT32(code, 3);
+//    CO_memcpySwap4(&SDO->CANtxBuff->data[4], &code);
     SDO->state = CO_SDO_ST_IDLE;
     CO_FLAG_CLEAR(SDO->CANrxNew);
     CO_CANsend(SDO->CANdevTx, SDO->CANtxBuff);
