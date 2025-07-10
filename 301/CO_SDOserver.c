@@ -535,12 +535,17 @@ uint32_t CO_SDO_readOD(CO_SDO_t *SDO, uint16_t SDOBufferSize){
     if(ODdata != NULL){
         #if UINT8_16BITS
             int i = 0;
-            for(i = 0; i < length / 2; i++) {
-                SDObuffer[2*i]     = ODdata[i] & 0x00FF;
-                SDObuffer[2*i + 1] = ODdata[i] >> 8;
+            if(length <= 4){
+                for(i = 0; i < length / 2; i++) {
+                    SDObuffer[2*i]     = ODdata[i] & 0x00FF;
+                    SDObuffer[2*i + 1] = ODdata[i] >> 8;
+                }
+                if(length % 2) {
+                    SDObuffer[2*i] = ODdata[i] & 0x00FF ;
+                }
             }
-            if(length % 2) {
-                SDObuffer[2*i] = ODdata[i] & 0x00FF ;
+            else{
+                while(length--) *(SDObuffer++) = *(ODdata++);
             }
         #else
             while(length--) *(SDObuffer++) = *(ODdata++);
@@ -659,11 +664,16 @@ uint32_t CO_SDO_writeOD(CO_SDO_t *SDO, uint16_t length){
     if((ODdata != NULL) && !exception_1003){
         #if UINT8_16BITS
             int i = 0;
-            for(i = 0; i < length / 2; i++) {
-                ((uint16_t *)ODdata)[i] = (SDObuffer[2*i + 1] << 8) | SDObuffer[2*i];
+            if(length <= 4){
+                for(i = 0; i < length / 2; i++) {
+                    ((uint16_t *)ODdata)[i] = (SDObuffer[2*i + 1] << 8) | SDObuffer[2*i];
+                }
+                if(length % 2) {
+                    ((uint16_t *)ODdata)[i] = SDObuffer[2*i];
+                }
             }
-            if(length % 2) {
-                ((uint16_t *)ODdata)[i] = SDObuffer[2*i];
+            else{
+                *(ODdata++) = *(SDObuffer++);
             }
         #else  
             while(length--){
