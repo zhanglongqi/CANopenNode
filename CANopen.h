@@ -78,6 +78,16 @@ extern "C" {
  */
 
 /**
+ * @defgroup CO_CANopen_303 CANopen_303
+ * @{
+ *
+ * CANopen recommendation for indicator specification (CiA 303-3 v1.4.0)
+ *
+ * Description of communication related indicators - green and red LED diodes.
+ * @}
+ */
+
+/**
  * @defgroup CO_CANopen_305 CANopen_305
  * @{
  *
@@ -123,22 +133,9 @@ extern "C" {
     #include "301/CO_SDOserver.h"
     #include "301/CO_Emergency.h"
     #include "301/CO_NMT_Heartbeat.h"
-    #include "301/CO_SYNC.h"
     #include "301/CO_TIME.h"
     #include "301/CO_PDO.h"
     #include "301/CO_HBconsumer.h"
-#if CO_NO_SDO_CLIENT != 0
-    #include "301/CO_SDOclient.h"
-#endif
-#if CO_NO_LSS_SERVER != 0
-    #include "305/CO_LSSslave.h"
-#endif
-#if CO_NO_LSS_CLIENT != 0
-    #include "305/CO_LSSmaster.h"
-#endif
-#if CO_NO_TRACE != 0
-    #include "extra/CO_trace.h"
-#endif
     #include "CO_OD.h"
 
 
@@ -155,35 +152,37 @@ extern "C" {
 /** Number of NMT objects, fixed to 1 slave(CANrx) */
 #define CO_NO_NMT (1)
 /** Number of NMT master objects, 0 or 1 master(CANtx). It depends on
- * @ref CO_CONFIG_EM setting. */
-#define CO_NO_NMT_MST (0...1)
+ * @ref CO_CONFIG_NMT setting. */
+#define CO_NO_NMT_MST (0 - 1)
 /** Number of SYNC objects, 0 or 1 (consumer(CANrx) + producer(CANtx)) */
-#define CO_NO_SYNC (0...1)
+#define CO_NO_SYNC (0 - 1)
 /** Number of Emergency producer objects, fixed to 1 producer(CANtx) */
 #define CO_NO_EMERGENCY (1)
 /** Number of Emergency consumer objects, 0 or 1 consumer(CANrx). It depends on
  * @ref CO_CONFIG_EM setting. */
-#define CO_NO_EM_CONS (0...1)
+#define CO_NO_EM_CONS (0 - 1)
 /** Number of Time-stamp objects, 0 or 1 (consumer(CANrx) + producer(CANtx)) */
-#define CO_NO_TIME (0...1)
+#define CO_NO_TIME (0 - 1)
 /** Number of RPDO objects, 1 to 512 consumers (CANrx) */
-#define CO_NO_RPDO (1...512)
+#define CO_NO_RPDO (1 - 512)
 /** Number of TPDO objects, 1 to 512 producers (CANtx) */
-#define CO_NO_TPDO (1...512)
+#define CO_NO_TPDO (1 - 512)
 /** Number of SDO server objects, from 1 to 128 (CANrx + CANtx) */
-#define CO_NO_SDO_SERVER (1...128)
+#define CO_NO_SDO_SERVER (1 - 128)
 /** Number of SDO client objects, from 0 to 128 (CANrx + CANtx) */
-#define CO_NO_SDO_CLIENT (0...128)
+#define CO_NO_SDO_CLIENT (0 - 128)
 /** Number of HB producer objects, fixed to 1 producer(CANtx) */
 #define CO_NO_HB_PROD (1)
 /** Number of HB consumer objects, from 0 to 127 consumers(CANrx) */
-#define CO_NO_HB_CONS (0...127)
-/** Number of LSS slave objects, 0 or 1 (CANrx + CANtx) */
-#define CO_NO_LSS_SLAVE (0...1)
-/** Number of LSS master objects, 0 or 1 (CANrx + CANtx) */
-#define CO_NO_LSS_MASTER (0...1)
+#define CO_NO_HB_CONS (0 - 127)
+/** Number of LSS slave objects, 0 or 1 (CANrx + CANtx). It depends on
+ * @ref CO_CONFIG_LSS setting. */
+#define CO_NO_LSS_SLAVE (0 - 1)
+/** Number of LSS master objects, 0 or 1 (CANrx + CANtx). It depends on
+ * @ref CO_CONFIG_LSS setting. */
+#define CO_NO_LSS_MASTER (0 - 1)
 /** Number of Trace objects, 0 to many */
-#define CO_NO_TRACE (0...)
+#define CO_NO_TRACE (0 - )
 /** @} */
 
 #else  /* CO_DOXYGEN */
@@ -215,33 +214,79 @@ extern "C" {
 #else
     #define CO_NO_HB_CONS 0
 #endif
+
+/* LSS slave count depends on stack configuration */
+#if (CO_CONFIG_LSS) & CO_CONFIG_LSS_SLAVE
+#define CO_NO_LSS_SLAVE 1
+#else
+#define CO_NO_LSS_SLAVE 0
+#endif
+
+/* LSS master count depends on stack configuration */
+#if (CO_CONFIG_LSS) & CO_CONFIG_LSS_MASTER
+#define CO_NO_LSS_MASTER 1
+#else
+#define CO_NO_LSS_MASTER 0
+#endif
 #endif /* CO_DOXYGEN */
+
+
+#if CO_NO_SYNC == 1 || defined CO_DOXYGEN
+    #include "301/CO_SYNC.h"
+#endif
+#if CO_NO_SDO_CLIENT != 0 || defined CO_DOXYGEN
+    #include "301/CO_SDOclient.h"
+#endif
+#if CO_NO_LSS_SLAVE != 0 || defined CO_DOXYGEN
+    #include "305/CO_LSSslave.h"
+#endif
+#if ((CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE) || defined CO_DOXYGEN
+    #include "303/CO_LEDs.h"
+#endif
+#if CO_NO_LSS_MASTER != 0 || defined CO_DOXYGEN
+    #include "305/CO_LSSmaster.h"
+#endif
+#if ((CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII) || defined CO_DOXYGEN
+    #include "309/CO_gateway_ascii.h"
+#endif
+#if CO_NO_TRACE != 0 || defined CO_DOXYGEN
+    #include "extra/CO_trace.h"
+#endif
 
 
 /**
  * CANopen object with pointers to all CANopenNode objects.
  */
 typedef struct {
+    bool_t nodeIdUnconfigured;       /**< True in unconfigured LSS slave */
     CO_CANmodule_t *CANmodule[1];    /**< CAN module objects */
     CO_SDO_t *SDO[CO_NO_SDO_SERVER]; /**< SDO object */
     CO_EM_t *em;                     /**< Emergency report object */
     CO_EMpr_t *emPr;                 /**< Emergency process object */
     CO_NMT_t *NMT;                   /**< NMT object */
+#if CO_NO_SYNC == 1 || defined CO_DOXYGEN
     CO_SYNC_t *SYNC;                 /**< SYNC object */
+#endif
     CO_TIME_t *TIME;                 /**< TIME object */
     CO_RPDO_t *RPDO[CO_NO_RPDO];     /**< RPDO objects */
     CO_TPDO_t *TPDO[CO_NO_TPDO];     /**< TPDO objects */
     CO_HBconsumer_t *HBcons;         /**< Heartbeat consumer object*/
-#if CO_NO_SDO_CLIENT != 0
+#if CO_NO_SDO_CLIENT != 0 || defined CO_DOXYGEN
     CO_SDOclient_t *SDOclient[CO_NO_SDO_CLIENT]; /**< SDO client object */
 #endif
-#if CO_NO_LSS_SERVER == 1
+#if ((CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE) || defined CO_DOXYGEN
+    CO_LEDs_t *LEDs;                 /**< LEDs object */
+#endif
+#if CO_NO_LSS_SLAVE == 1 || defined CO_DOXYGEN
     CO_LSSslave_t *LSSslave;         /**< LSS slave object */
 #endif
-#if CO_NO_LSS_CLIENT == 1
+#if CO_NO_LSS_MASTER == 1 || defined CO_DOXYGEN
     CO_LSSmaster_t *LSSmaster;       /**< LSS master object */
 #endif
-#if CO_NO_TRACE > 0
+#if ((CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII) || defined CO_DOXYGEN
+    CO_GTWA_t *gtwa;                /**< Gateway-ascii object (CiA309-3) */
+#endif
+#if CO_NO_TRACE > 0 || defined CO_DOXYGEN
     CO_trace_t *trace[CO_NO_TRACE]; /**< Trace object for recording variables */
 #endif
 } CO_t;
@@ -293,20 +338,21 @@ CO_ReturnError_t CO_CANinit(void *CANptr,
                             uint16_t bitRate);
 
 
-#if CO_NO_LSS_SERVER == 1
+#if CO_NO_LSS_SLAVE == 1 || defined CO_DOXYGEN
 /**
  * Initialize CANopen LSS slave
  *
- * Function must be called in the communication reset section.
+ * Function must be called before CO_CANopenInit.
  *
- * @param nodeId Node ID of the CANopen device (1 ... 127) or
- *               CO_LSS_NODE_ID_ASSIGNMENT
- * @param bitRate CAN bit rate.
+ * See #CO_LSSslave_init() for description of parameters.
+ *
+ * @param [in,out] pendingNodeID Pending node ID or 0xFF(unconfigured)
+ * @param [in,out] pendingBitRate Pending bit rate of the CAN interface
  * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT
  */
-CO_ReturnError_t CO_LSSinit(uint8_t nodeId,
-                            uint16_t bitRate);
-#endif /* CO_NO_LSS_SERVER == 1 */
+CO_ReturnError_t CO_LSSinit(uint8_t *pendingNodeID,
+                            uint16_t *pendingBitRate);
+#endif /* CO_NO_LSS_SLAVE == 1 */
 
 
 /**
@@ -314,7 +360,10 @@ CO_ReturnError_t CO_LSSinit(uint8_t nodeId,
  *
  * Function must be called in the communication reset section.
  *
- * @param nodeId Node ID of the CANopen device (1 ... 127).
+ * @param nodeId CANopen Node ID (1 ... 127) or 0xFF(unconfigured). In the
+ * CANopen initialization it is the same as pendingBitRate from CO_LSSinit().
+ * If it is unconfigured, then some CANopen objects will not be initialized nor
+ * processed.
  * @return #CO_ReturnError_t: CO_ERROR_NO, CO_ERROR_ILLEGAL_ARGUMENT
  */
 CO_ReturnError_t CO_CANopenInit(uint8_t nodeId);
@@ -346,7 +395,7 @@ CO_NMT_reset_cmd_t CO_process(CO_t *co,
                               uint32_t *timerNext_us);
 
 
-#if CO_NO_SYNC == 1
+#if CO_NO_SYNC == 1 || defined CO_DOXYGEN
 /**
  * Process CANopen SYNC objects.
  *

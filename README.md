@@ -37,7 +37,9 @@ Characteristics
  - [Time-stamp](https://www.can-cia.org/can-knowledge/canopen/special-function-protocols/)
    protocol producer/consumer.
  - [LSS](https://www.can-cia.org/can-knowledge/canopen/cia305/) master and
-   slave, LSS fastscan
+   slave, LSS fastscan.
+ - [CANopen gateway](https://www.can-cia.org/can-knowledge/canopen/cia309/),
+   CiA309-3 Ascii command interface for NMT master, LSS master and SDO client.
 
 ### Other
  - [Suitable for 16-bit microcontrollers and above](#device-support)
@@ -55,7 +57,8 @@ Documentation with [Getting started](doc/gettingStarted.md),
 directory.
 Code is documented in header files. Running [doxygen](http://www.doxygen.nl/)
 in project base directory will produce complete html documentation.
-Just open CANopenNode/doc/html/index.html in the browser.
+Just open CANopenNode/doc/html/index.html in the browser. Alternatively browse
+documentation [online](https://canopennode.github.io/CANopenSocket/).
 
 Report issues on https://github.com/CANopenNode/CANopenNode/issues
 
@@ -139,11 +142,16 @@ File structure
    - **CO_SDOserver.h/.c** - CANopen Service Data Object - server protocol.
    - **CO_SYNC.h/.c** - CANopen Synchronisation protocol (producer and consumer).
    - **CO_TIME.h/.c** - CANopen Time-stamp protocol.
+   - **CO_fifo.h/.c** - Fifo buffer for SDO and gateway data transfer.
    - **crc16-ccitt.h/.c** - Calculation of CRC 16 CCITT polynomial.
+ - **303/** - CANopen Recommendation
+   - **CO_LEDs.h/.c** - CANopen LED Indicators
  - **305/** - CANopen layer setting services (LSS) and protocols.
    - **CO_LSS.h** - CANopen Layer Setting Services protocol (common).
    - **CO_LSSmaster.h/.c** - CANopen Layer Setting Service - master protocol.
    - **CO_LSSslave.h/.c** - CANopen Layer Setting Service - slave protocol.
+ - **309/** - CANopen access from other networks.
+   - **CO_gateway_ascii.h/.c** - Ascii mapping: NMT master, LSS master, SDO client.
  - **extra/**
    - **CO_trace.h/.c** - CANopen trace object for recording variables over time.
  - **example/** - Directory with basic example, should compile on any system.
@@ -177,6 +185,7 @@ File structure
  - **.clang-format** - Definition file for the coding style.
  - **Doxyfile** - Configuration file for the documentation generator *doxygen*.
  - **Makefile** - Makefile for Linux socketCAN.
+ - **canopend** - Executable for Linux, build with `make`.
  - **LICENSE** - License.
  - **README.md** - This file.
 

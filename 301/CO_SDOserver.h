@@ -82,9 +82,10 @@ typedef enum {
  * - SDO server is waiting for client request. */
 CO_SDO_ST_IDLE = 0x00U,
 /**
- * - Node-ID of the SDO server is the same as node-ID of this node, SDO client
- *   is the same device as SDO server. Transfer data directly without
- *   communication on CAN. */
+ * - SDO client: Node-ID of the SDO server is the same as node-ID of this node,
+ *   SDO client is the same device as SDO server. Transfer data directly without
+ *   communication on CAN.
+ * - SDO server does not use this state. */
 CO_SDO_ST_LOCAL_TRANSFER = 0x01U,
 /**
  * - SDO client or server may send SDO abort message in case of error:
@@ -149,7 +150,7 @@ CO_SDO_ST_UPLOAD_INITIATE_RSP = 0x22U,
  * - SDO client requests SDO segment:
  *  - byte 0: @b 011t0000 binary: (t: toggle bit, set to 0 in first segment).
  *  - byte 1..7: Reserved.
- * - SDO server waits for segment. */
+ * - SDO server waits for segment request. */
 CO_SDO_ST_UPLOAD_SEGMENT_REQ = 0x23U,
 /**
  * - SDO client waits for response.
@@ -256,12 +257,6 @@ CO_SDO_ST_UPLOAD_BLK_INITIATE_REQ2 = 0x43U,
  *  - byte 1..7: At most 7 bytes of segment data to be uploaded. */
 CO_SDO_ST_UPLOAD_BLK_SUBBLOCK_SREQ = 0x44U,
 /**
- * This is interim state after server finished sending sequence of segments in
- * one sub-block. This state is valid one cycle. In that state data should be
- * emptied from internal buffer. In the next cycle client will send response and
- * server will send another sequence of segments. */
-CO_SDO_ST_UPLOAD_BLK_SUBBLOCK_DATA_RDY = 0x45U,
-/**
  * - SDO client responses:
  *  - byte 0: @b 10100010 binary.
  *  - byte 1: ackseq: sequence number of last segment that was received
@@ -274,7 +269,7 @@ CO_SDO_ST_UPLOAD_BLK_SUBBLOCK_DATA_RDY = 0x45U,
  *  - byte 3..7: Reserved.
  * - SDO server waits for response.
  * - If c was set to 1, then communication enters SDO block upload end phase. */
-CO_SDO_ST_UPLOAD_BLK_SUBBLOCK_CRSP = 0x46U,
+CO_SDO_ST_UPLOAD_BLK_SUBBLOCK_CRSP = 0x45U,
 /**
  * - SDO client waits for server request.
  * - SDO server sends SDO block upload end:
@@ -282,7 +277,7 @@ CO_SDO_ST_UPLOAD_BLK_SUBBLOCK_CRSP = 0x46U,
  *    contain data)
  *  - byte 1..2: 16 bit CRC for the data set, if enabled by client and server.
  *  - byte 3..7: Reserved. */
-CO_SDO_ST_UPLOAD_BLK_END_SREQ = 0x47U,
+CO_SDO_ST_UPLOAD_BLK_END_SREQ = 0x46U,
 /**
  * - SDO client responses:
  *  - byte 0: @b 10100001 binary.
@@ -292,7 +287,7 @@ CO_SDO_ST_UPLOAD_BLK_END_SREQ = 0x47U,
  *   with client response. Client may then start next SDO communication
  *   immediately.
  */
-CO_SDO_ST_UPLOAD_BLK_END_CRSP = 0x48U,
+CO_SDO_ST_UPLOAD_BLK_END_CRSP = 0x47U,
 
 /* old state names, will be removed */
 CO_SDO_ST_DOWNLOAD_INITIATE = 0xA1U,
@@ -494,6 +489,20 @@ typedef enum{
  *  - 0: Data transfer is successful
  *  - Different than 0: Failure. See #CO_SDO_abortCode_t.
  */
+
+
+/**
+ * Size of fifo queue for SDO received messages.
+ *
+ * If block transfers are used size of fifo queue should be more that 1 message
+ * to avoid possible drops in consecutive SDO block upload transfers.
+ * To increase performance, value can be set to 1 if block transfers are not used
+ *
+ * Min value is 1.
+ */
+    #ifndef CO_SDO_RX_DATA_SIZE
+        #define CO_SDO_RX_DATA_SIZE   2
+    #endif
 
 
 /**
@@ -724,8 +733,8 @@ typedef struct{
  * SDO server object.
  */
 typedef struct{
-    /** 8 data bytes of the received message. */
-    uint8_t             CANrxData[8];
+    /** FIFO queue of the received message 8 data bytes each */
+    uint8_t             CANrxData[CO_SDO_RX_DATA_SIZE][8];
     /** SDO data buffer of size #CO_CONFIG_SDO_BUFFER_SIZE. */
     uint8_t             databuffer[CO_CONFIG_SDO_BUFFER_SIZE];
     /** Internal flag indicates, that this object has own OD */
@@ -766,8 +775,14 @@ typedef struct{
     bool_t              timeoutSubblockDownolad;
     /** Indication end of block transfer */
     bool_t              endOfTransfer;
-    /** Variable indicates, if new SDO message received from CAN bus */
-    volatile void      *CANrxNew;
+    /** Variables indicates, if new SDO message received from CAN bus */
+    volatile void      *CANrxNew[CO_SDO_RX_DATA_SIZE];
+    /** Index of CANrxData for new received SDO message */
+    uint8_t             CANrxRcv;
+    /** Index of CANrxData SDO message to processed */
+    uint8_t             CANrxProc;
+    /** Number of new SDO messages in CANrxData to process */
+    uint8_t             CANrxSize;
 #if ((CO_CONFIG_SDO) & CO_CONFIG_FLAG_CALLBACK_PRE) || defined CO_DOXYGEN
     /** From CO_SDO_initCallbackPre() or NULL */
     void              (*pFunctSignalPre)(void *object);
@@ -839,7 +854,7 @@ static inline void CO_setUint32(uint8_t data[], const uint32_t value){
 #ifdef CO_LITTLE_ENDIAN
 #define CO_memcpySwap2(dest, src) memcpy(dest, src, 2)
 #endif
-#ifdef CO_BIG_ENDIAN
+#if defined CO_BIG_ENDIAN || defined CO_DOXYGEN
 static inline void CO_memcpySwap2(void* dest, const void* src){
     char *cdest;
     char *csrc;
@@ -861,7 +876,7 @@ static inline void CO_memcpySwap2(void* dest, const void* src){
 #ifdef CO_LITTLE_ENDIAN
 #define CO_memcpySwap4(dest, src) memcpy(dest, src, 4)
 #endif
-#ifdef CO_BIG_ENDIAN
+#if defined CO_BIG_ENDIAN || defined CO_DOXYGEN
 static inline void CO_memcpySwap4(void* dest, const void* src){
     char *cdest;
     char *csrc;
@@ -885,7 +900,7 @@ static inline void CO_memcpySwap4(void* dest, const void* src){
 #ifdef CO_LITTLE_ENDIAN
 #define CO_memcpySwap8(dest, src) memcpy(dest, src, 8)
 #endif
-#ifdef CO_BIG_ENDIAN
+#if defined CO_BIG_ENDIAN || defined CO_DOXYGEN
 static inline void CO_memcpySwap8(void* dest, const void* src){
     char *cdest;
     char *csrc;
