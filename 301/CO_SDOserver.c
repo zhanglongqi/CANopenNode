@@ -659,6 +659,14 @@ uint32_t CO_SDO_writeOD(CO_SDO_t *SDO, uint16_t length){
     if(SDO->ODF_arg.index == 0x1003 && SDO->ODF_arg.subIndex == 0) {
         exception_1003 = true;
     }
+    /* out of range exception is not supported in this version, do manual check for script test */
+    if(SDO->ODF_arg.index == INDEX_ACCUM_CMD && SDO->ODF_arg.subIndex == SUB_INDEX_ACCUM_CMD) {
+        uint32_t value = BUILD_UINT32(SDObuffer[0], SDObuffer[1], SDObuffer[2], SDObuffer[3]);
+        if(value > ACCUM_CMD_MAX || value < ACCUM_CMD_MIN){
+            return CO_SDO_AB_INVALID_VALUE;     /* Invalid value for download parameter */
+        }
+    }
+
 
     /* copy data from SDO buffer to OD if not domain */
     if((ODdata != NULL) && !exception_1003){
