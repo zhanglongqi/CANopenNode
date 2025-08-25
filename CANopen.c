@@ -789,11 +789,13 @@ CO_NMT_reset_cmd_t CO_process(CO_t *co,
     }
 
     /* Emergency */
+#if ENABLE_EM_PROCESS
     CO_EM_process(co->emPr,
                   NMTisPreOrOperational,
                   timeDifference_us,
                   OD_inhibitTimeEMCY,
                   timerNext_us);
+#endif
 
     /* NMT_Heartbeat */
     reset = CO_NMT_process(co->NMT,
