@@ -42,10 +42,16 @@ static CO_CANtx_t          *CO_CANmodule_txArray0;
 static CO_OD_extension_t   *CO_SDO_ODExtensions;
 static CO_HBconsNode_t     *CO_HBcons_monitoredNodes;
 
+#if ((CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII) && !defined CO_GTWA_ENABLE
+#define CO_GTWA_ENABLE      true
+#endif
 #if CO_NO_TRACE > 0
 static uint32_t            *CO_traceTimeBuffers[CO_NO_TRACE];
 static int32_t             *CO_traceValueBuffers[CO_NO_TRACE];
 static uint32_t             CO_traceBufferSize[CO_NO_TRACE];
+#endif
+#ifndef CO_STATUS_FIRMWARE_DOWNLOAD_IN_PROGRESS
+#define CO_STATUS_FIRMWARE_DOWNLOAD_IN_PROGRESS 0
 #endif
 
 
@@ -59,9 +65,8 @@ static uint32_t             CO_traceBufferSize[CO_NO_TRACE];
     || (CO_NO_TPDO < 1 || CO_NO_TPDO > 0x200)              \
     || ODL_consumerHeartbeatTime_arrayLength      == 0     \
     || ODL_errorStatusBits_stringLength           < 10     \
-    || CO_NO_LSS_SERVER                           >  1     \
-    || CO_NO_LSS_CLIENT                           >  1     \
-    || (CO_NO_LSS_SERVER > 0 && CO_NO_LSS_CLIENT > 0)
+    || CO_NO_LSS_SLAVE                            >  1     \
+    || CO_NO_LSS_MASTER                           >  1
 #error Features from CO_OD.h file are not corectly configured for this project!
 #endif
 
@@ -74,7 +79,8 @@ static uint32_t             CO_traceBufferSize[CO_NO_TRACE];
 #define CO_RXCAN_SDO_SRV (CO_RXCAN_RPDO     + CO_NO_RPDO)
 #define CO_RXCAN_SDO_CLI (CO_RXCAN_SDO_SRV  + CO_NO_SDO_SERVER)
 #define CO_RXCAN_CONS_HB (CO_RXCAN_SDO_CLI  + CO_NO_SDO_CLIENT)
-#define CO_RXCAN_LSS     (CO_RXCAN_CONS_HB  + CO_NO_HB_CONS)
+#define CO_RXCAN_LSS_SLV (CO_RXCAN_CONS_HB  + CO_NO_HB_CONS)
+#define CO_RXCAN_LSS_MST (CO_RXCAN_LSS_SLV  + CO_NO_LSS_SLAVE)
 #define CO_RXCAN_NO_MSGS (CO_NO_NMT         + \
                           CO_NO_SYNC        + \
                           CO_NO_EM_CONS     + \
@@ -83,8 +89,8 @@ static uint32_t             CO_traceBufferSize[CO_NO_TRACE];
                           CO_NO_SDO_SERVER  + \
                           CO_NO_SDO_CLIENT  + \
                           CO_NO_HB_CONS     + \
-                          CO_NO_LSS_SERVER  + \
-                          CO_NO_LSS_CLIENT)
+                          CO_NO_LSS_SLAVE   + \
+                          CO_NO_LSS_MASTER)
 
 /* Indexes of CO_CANtx_t objects in CO_CANmodule_t and total number of them. **/
 #define CO_TXCAN_NMT      0
@@ -95,7 +101,8 @@ static uint32_t             CO_traceBufferSize[CO_NO_TRACE];
 #define CO_TXCAN_SDO_SRV (CO_TXCAN_TPDO     + CO_NO_TPDO)
 #define CO_TXCAN_SDO_CLI (CO_TXCAN_SDO_SRV  + CO_NO_SDO_SERVER)
 #define CO_TXCAN_HB      (CO_TXCAN_SDO_CLI  + CO_NO_SDO_CLIENT)
-#define CO_TXCAN_LSS     (CO_TXCAN_HB       + CO_NO_HB_PROD)
+#define CO_TXCAN_LSS_SLV (CO_TXCAN_HB       + CO_NO_HB_PROD)
+#define CO_TXCAN_LSS_MST (CO_TXCAN_LSS_SLV  + CO_NO_LSS_SLAVE)
 #define CO_TXCAN_NO_MSGS (CO_NO_NMT_MST     + \
                           CO_NO_SYNC        + \
                           CO_NO_EMERGENCY   + \
@@ -104,8 +111,8 @@ static uint32_t             CO_traceBufferSize[CO_NO_TRACE];
                           CO_NO_SDO_SERVER  + \
                           CO_NO_SDO_CLIENT  + \
                           CO_NO_HB_PROD     + \
-                          CO_NO_LSS_SERVER  + \
-                          CO_NO_LSS_CLIENT)
+                          CO_NO_LSS_SLAVE   + \
+                          CO_NO_LSS_MASTER)
 
 
 /* Create objects from heap ***************************************************/
@@ -164,8 +171,6 @@ CO_ReturnError_t CO_new(uint32_t *heapMemoryUsed) {
     CO->SYNC = (CO_SYNC_t *)calloc(1, sizeof(CO_SYNC_t));
     if (CO->SYNC == NULL) errCnt++;
     CO_memoryUsed += sizeof(CO_SYNC_t);
-#else
-    CO->SYNC = NULL;
 #endif
 
 #if CO_NO_TIME == 1
@@ -210,18 +215,32 @@ CO_ReturnError_t CO_new(uint32_t *heapMemoryUsed) {
     CO_memoryUsed += sizeof(CO_SDOclient_t) * CO_NO_SDO_CLIENT;
 #endif
 
-#if CO_NO_LSS_SERVER == 1
+#if (CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE
+    /* LEDs */
+    CO->LEDs = (CO_LEDs_t *)calloc(1, sizeof(CO_LEDs_t));
+    if (CO->LEDs == NULL) errCnt++;
+    CO_memoryUsed += sizeof(CO_LEDs_t);
+#endif
+
+#if CO_NO_LSS_SLAVE == 1
     /* LSSslave */
     CO->LSSslave = (CO_LSSslave_t *)calloc(1, sizeof(CO_LSSslave_t));
     if (CO->LSSslave == NULL) errCnt++;
     CO_memoryUsed += sizeof(CO_LSSslave_t);
 #endif
 
-#if CO_NO_LSS_CLIENT == 1
+#if CO_NO_LSS_MASTER == 1
     /* LSSmaster */
     CO->LSSmaster = (CO_LSSmaster_t *)calloc(1, sizeof(CO_LSSmaster_t));
     if (CO->LSSmaster == NULL) errCnt++;
     CO_memoryUsed += sizeof(CO_LSSmaster_t);
+#endif
+
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+    /* Gateway-ascii */
+    CO->gtwa = (CO_GTWA_t *)calloc(1, sizeof(CO_GTWA_t));
+    if (CO->gtwa == NULL) errCnt++;
+    CO_memoryUsed += sizeof(CO_GTWA_t);
 #endif
 
 #if CO_NO_TRACE > 0
@@ -276,12 +295,17 @@ void CO_delete(void *CANptr) {
     }
 #endif
 
-#if CO_NO_LSS_CLIENT == 1
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+    /* Gateway-ascii */
+    free(CO->gtwa);
+#endif
+
+#if CO_NO_LSS_MASTER == 1
     /* LSSmaster */
     free(CO->LSSmaster);
 #endif
 
-#if CO_NO_LSS_SERVER == 1
+#if CO_NO_LSS_SLAVE == 1
     /* LSSslave */
     free(CO->LSSslave);
 #endif
@@ -364,11 +388,17 @@ void CO_delete(void *CANptr) {
 #if CO_NO_SDO_CLIENT != 0
     static CO_SDOclient_t       COO_SDOclient[CO_NO_SDO_CLIENT];
 #endif
-#if CO_NO_LSS_SERVER == 1
+#if (CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE
+    static CO_LEDs_t            COO_LEDs;
+#endif
+#if CO_NO_LSS_SLAVE == 1
     static CO_LSSslave_t        COO_LSSslave;
 #endif
-#if CO_NO_LSS_CLIENT == 1
+#if CO_NO_LSS_MASTER == 1
     static CO_LSSmaster_t       COO_LSSmaster;
+#endif
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+    static CO_GTWA_t            COO_gtwa;
 #endif
 #if CO_NO_TRACE > 0
   #ifndef CO_TRACE_BUFFER_SIZE_FIXED
@@ -411,8 +441,6 @@ CO_ReturnError_t CO_new(uint32_t *heapMemoryUsed) {
 #if CO_NO_SYNC == 1
     /* SYNC */
     CO->SYNC = &COO_SYNC;
-#else
-    CO->SYNC = NULL;
 #endif
 
 #if CO_NO_TIME == 1
@@ -443,14 +471,24 @@ CO_ReturnError_t CO_new(uint32_t *heapMemoryUsed) {
     }
 #endif
 
-#if CO_NO_LSS_SERVER == 1
+#if (CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE
+    /* LEDs */
+    CO->LEDs = &COO_LEDs;
+#endif
+
+#if CO_NO_LSS_SLAVE == 1
     /* LSSslave */
     CO->LSSslave = &COO_LSSslave;
 #endif
 
-#if CO_NO_LSS_CLIENT == 1
+#if CO_NO_LSS_MASTER == 1
     /* LSSmaster */
     CO->LSSmaster = &COO_LSSmaster;
+#endif
+
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+    /* Gateway-ascii */
+    CO->gtwa = &COO_gtwa;
 #endif
 
 #if CO_NO_TRACE > 0
@@ -500,9 +538,9 @@ CO_ReturnError_t CO_CANinit(void *CANptr,
 
 
 /******************************************************************************/
-#if CO_NO_LSS_SERVER == 1
-CO_ReturnError_t CO_LSSinit(uint8_t nodeId,
-                            uint16_t bitRate)
+#if CO_NO_LSS_SLAVE == 1
+CO_ReturnError_t CO_LSSinit(uint8_t *nodeId,
+                            uint16_t *bitRate)
 {
     CO_LSS_address_t lssAddress;
     CO_ReturnError_t err;
@@ -518,15 +556,15 @@ CO_ReturnError_t CO_LSSinit(uint8_t nodeId,
                            bitRate,
                            nodeId,
                            CO->CANmodule[0],
-                           CO_RXCAN_LSS,
+                           CO_RXCAN_LSS_SLV,
                            CO_CAN_ID_LSS_SRV,
                            CO->CANmodule[0],
-                           CO_TXCAN_LSS,
+                           CO_TXCAN_LSS_SLV,
                            CO_CAN_ID_LSS_CLI);
 
     return err;
 }
-#endif /* CO_NO_LSS_SERVER == 1 */
+#endif /* CO_NO_LSS_SLAVE == 1 */
 
 
 /******************************************************************************/
@@ -535,6 +573,13 @@ CO_ReturnError_t CO_CANopenInit(uint8_t nodeId) {
     CO_ReturnError_t err;
 
     /* Verify CANopen Node-ID */
+    CO->nodeIdUnconfigured = false;
+#if CO_NO_LSS_SLAVE == 1
+    if (nodeId == CO_LSS_NODE_ID_ASSIGNMENT) {
+        CO->nodeIdUnconfigured = true;
+    }
+    else
+#endif
     if (nodeId < 1 || nodeId > 127) {
         return CO_ERROR_PARAMETERS;
     }
@@ -552,6 +597,18 @@ CO_ReturnError_t CO_CANopenInit(uint8_t nodeId) {
     }
 #endif
 
+#if (CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE
+    /* LEDs */
+    err = CO_LEDs_init(CO->LEDs);
+
+    if (err) return err;
+#endif
+
+#if CO_NO_LSS_SLAVE == 1
+    if (CO->nodeIdUnconfigured) {
+        return CO_ERROR_NODE_ID_UNCONFIGURED_LSS;
+    }
+#endif
 
     /* SDOserver */
     for (i = 0; i < CO_NO_SDO_SERVER; i++) {
@@ -663,7 +720,9 @@ CO_ReturnError_t CO_CANopenInit(uint8_t nodeId) {
         err = CO_RPDO_init(CO->RPDO[i],
                            CO->em,
                            CO->SDO[0],
-                           (void *)CO->SYNC,
+#if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
+                           CO->SYNC,
+#endif
                            &CO->NMT->operatingState,
                            nodeId,
                            ((i < 4) ? (CO_CAN_ID_RPDO_1 + i * 0x100) : 0),
@@ -683,7 +742,9 @@ CO_ReturnError_t CO_CANopenInit(uint8_t nodeId) {
         err = CO_TPDO_init(CO->TPDO[i],
                            CO->em,
                            CO->SDO[0],
-                           (void *)CO->SYNC,
+#if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
+                           CO->SYNC,
+#endif
                            &CO->NMT->operatingState,
                            nodeId,
                            ((i < 4) ? (CO_CAN_ID_TPDO_1 + i * 0x100) : 0),
@@ -710,12 +771,11 @@ CO_ReturnError_t CO_CANopenInit(uint8_t nodeId) {
 
     if (err) return err;
 
-
 #if CO_NO_SDO_CLIENT != 0
     /* SDOclient */
     for (i = 0; i < CO_NO_SDO_CLIENT; i++) {
         err = CO_SDOclient_init(CO->SDOclient[i],
-                                CO->SDO[0],
+                                (void *)CO->SDO[0],
                                 (CO_SDOclientPar_t *)&OD_SDOClientParameter[i],
                                 CO->CANmodule[0],
                                 CO_RXCAN_SDO_CLI + i,
@@ -726,20 +786,40 @@ CO_ReturnError_t CO_CANopenInit(uint8_t nodeId) {
     }
 #endif
 
-#if CO_NO_LSS_CLIENT == 1
+#if CO_NO_LSS_MASTER == 1
     /* LSSmaster */
     err = CO_LSSmaster_init(CO->LSSmaster,
                             CO_LSSmaster_DEFAULT_TIMEOUT,
                             CO->CANmodule[0],
-                            CO_RXCAN_LSS,
+                            CO_RXCAN_LSS_MST,
                             CO_CAN_ID_LSS_CLI,
                             CO->CANmodule[0],
-                            CO_TXCAN_LSS,
+                            CO_TXCAN_LSS_MST,
                             CO_CAN_ID_LSS_SRV);
 
     if (err) return err;
-
 #endif
+
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+    /* Gateway-ascii */
+    err = CO_GTWA_init(CO->gtwa,
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII_SDO
+                       CO->SDOclient[0],
+                       500,
+                       false,
+#endif
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII_NMT
+                       CO->NMT,
+#endif
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII_LSS
+                       CO->LSSmaster,
+#endif
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII_PRINT_LEDS
+                       CO->LEDs,
+#endif
+                       0);
+    if (err) return err;
+#endif /* (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII */
 
 #if CO_NO_TRACE > 0
     /* Trace */
@@ -775,6 +855,44 @@ CO_NMT_reset_cmd_t CO_process(CO_t *co,
     uint8_t i;
     bool_t NMTisPreOrOperational = false;
     CO_NMT_reset_cmd_t reset = CO_RESET_NOT;
+
+    CO_CANmodule_process(CO->CANmodule[0]);
+
+#if CO_NO_LSS_SLAVE == 1
+    bool_t resetLSS = CO_LSSslave_process(co->LSSslave);
+#endif
+
+#if (CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE
+    bool_t unc = co->nodeIdUnconfigured;
+    uint16_t CANerrorStatus = CO->CANmodule[0]->CANerrorStatus;
+    CO_LEDs_process(co->LEDs,
+                    timeDifference_us,
+                    unc ? CO_NMT_INITIALIZING : co->NMT->operatingState,
+    #if CO_NO_LSS_SLAVE == 1
+                    CO_LSSslave_getState(co->LSSslave)
+                        == CO_LSS_STATE_CONFIGURATION,
+    #else
+                    false,
+    #endif
+                    (CANerrorStatus & CO_CAN_ERRTX_BUS_OFF) != 0,
+                    (CANerrorStatus & CO_CAN_ERR_WARN_PASSIVE) != 0,
+                    0, /* RPDO event timer timeout */
+                    unc ? false : CO_isError(co->em, CO_EM_SYNC_TIME_OUT),
+                    unc ? false : (CO_isError(co->em, CO_EM_HEARTBEAT_CONSUMER)
+                        || CO_isError(co->em, CO_EM_HB_CONSUMER_REMOTE_RESET)),
+                    OD_errorRegister != 0,
+                    CO_STATUS_FIRMWARE_DOWNLOAD_IN_PROGRESS,
+                    timerNext_us);
+#endif /* (CO_CONFIG_LEDS) & CO_CONFIG_LEDS_ENABLE */
+
+#if CO_NO_LSS_SLAVE == 1
+    if (resetLSS) {
+        reset = CO_RESET_COMM;
+    }
+    if (co->nodeIdUnconfigured) {
+        return reset;
+    }
+#endif
 
     if (co->NMT->operatingState == CO_NMT_PRE_OPERATIONAL ||
         co->NMT->operatingState == CO_NMT_OPERATIONAL)
@@ -816,6 +934,14 @@ CO_NMT_reset_cmd_t CO_process(CO_t *co,
                           timeDifference_us,
                           timerNext_us);
 
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+    /* Gateway-ascii */
+    CO_GTWA_process(co->gtwa,
+                    CO_GTWA_ENABLE,
+                    timeDifference_us,
+                    timerNext_us);
+#endif
+
     return reset;
 }
 
@@ -827,16 +953,25 @@ bool_t CO_process_SYNC(CO_t *co,
                        uint32_t *timerNext_us)
 {
     bool_t syncWas = false;
-    uint8_t sync_process = CO_SYNC_process(co->SYNC,
-                                           timeDifference_us,
-                                           OD_synchronousWindowLength,
-                                           timerNext_us);
+
+#if CO_NO_LSS_SLAVE == 1
+    if (co->nodeIdUnconfigured) {
+        return syncWas;
+    }
+#endif
+
+    const CO_SYNC_status_t sync_process = CO_SYNC_process(co->SYNC,
+                                   timeDifference_us,
+                                   OD_synchronousWindowLength,
+                                   timerNext_us);
 
     switch (sync_process) {
-    case 1: // immediately after the SYNC message
+    case CO_SYNC_NONE:
+        break;
+    case CO_SYNC_RECEIVED:
         syncWas = true;
         break;
-    case 2: // outside SYNC window
+    case CO_SYNC_OUTSIDE_WINDOW:
         CO_CANclearPendingSyncPDOs(co->CANmodule[0]);
         break;
     }
@@ -852,6 +987,12 @@ void CO_process_RPDO(CO_t *co,
 {
     int16_t i;
 
+#if CO_NO_LSS_SLAVE == 1
+    if (co->nodeIdUnconfigured) {
+        return;
+    }
+#endif
+
     for (i = 0; i < CO_NO_RPDO; i++) {
         CO_RPDO_process(co->RPDO[i], syncWas);
     }
@@ -865,6 +1006,12 @@ void CO_process_TPDO(CO_t *co,
                      uint32_t *timerNext_us)
 {
     int16_t i;
+
+#if CO_NO_LSS_SLAVE == 1
+    if (co->nodeIdUnconfigured) {
+        return;
+    }
+#endif
 
     /* Verify PDO Change Of State and process PDOs */
     for (i = 0; i < CO_NO_TPDO; i++) {

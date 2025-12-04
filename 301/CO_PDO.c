@@ -26,13 +26,6 @@
 
 #include <string.h>
 
-#include "301/CO_driver.h"
-#include "301/CO_SDOserver.h"
-#include "301/CO_Emergency.h"
-#include "301/CO_NMT_Heartbeat.h"
-#if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
-#include "301/CO_SYNC.h"
-#endif
 #include "301/CO_PDO.h"
 
 /*
@@ -731,7 +724,9 @@ CO_ReturnError_t CO_RPDO_init(
         CO_RPDO_t              *RPDO,
         CO_EM_t                *em,
         CO_SDO_t               *SDO,
-        void                   *SYNC,
+#if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
+        CO_SYNC_t              *SYNC,
+#endif
         CO_NMT_internalState_t *operatingState,
         uint8_t                 nodeId,
         uint16_t                defaultCOB_ID,
@@ -753,7 +748,7 @@ CO_ReturnError_t CO_RPDO_init(
     RPDO->em = em;
     RPDO->SDO = SDO;
 #if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
-    RPDO->SYNC = (CO_SYNC_t *)SYNC;
+    RPDO->SYNC = SYNC;
 #endif
     RPDO->RPDOCommPar = RPDOCommPar;
     RPDO->RPDOMapPar = RPDOMapPar;
@@ -805,7 +800,9 @@ CO_ReturnError_t CO_TPDO_init(
         CO_TPDO_t              *TPDO,
         CO_EM_t                *em,
         CO_SDO_t               *SDO,
-        void                   *SYNC,
+#if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
+        CO_SYNC_t              *SYNC,
+#endif
         CO_NMT_internalState_t *operatingState,
         uint8_t                 nodeId,
         uint16_t                defaultCOB_ID,
@@ -827,7 +824,7 @@ CO_ReturnError_t CO_TPDO_init(
     TPDO->em = em;
     TPDO->SDO = SDO;
 #if (CO_CONFIG_PDO) & CO_CONFIG_PDO_SYNC_ENABLE
-    TPDO->SYNC = (CO_SYNC_t *)SYNC;
+    TPDO->SYNC = SYNC;
 #endif
     TPDO->TPDOCommPar = TPDOCommPar;
     TPDO->TPDOMapPar = TPDOMapPar;
@@ -891,14 +888,13 @@ uint8_t CO_TPDOisCOS(CO_TPDO_t *TPDO){
     return 0;
 }
 
-//#define TPDO_CALLS_EXTENSION
 /******************************************************************************/
 int16_t CO_TPDOsend(CO_TPDO_t *TPDO){
     int16_t i;
     uint8_t* pPDOdataByte;
     uint8_t** ppODdataByte;
 
-#ifdef TPDO_CALLS_EXTENSION
+#if (CO_CONFIG_PDO) & CO_CONFIG_TPDO_CALLS_EXTENSION
     if(TPDO->SDO->ODExtensions){
         /* for each mapped OD, check mapping to see if an OD extension is available, and call it if it is */
         const uint32_t* pMap = &TPDO->TPDOMapPar->mappedObject1;
@@ -940,7 +936,6 @@ int16_t CO_TPDOsend(CO_TPDO_t *TPDO){
     return CO_CANsend(TPDO->CANdevTx, TPDO->CANtxBuff);
 }
 
-//#define RPDO_CALLS_EXTENSION
 /******************************************************************************/
 void CO_RPDO_process(CO_RPDO_t *RPDO, bool_t syncWas){
     bool_t process_rpdo = true;
@@ -959,9 +954,9 @@ void CO_RPDO_process(CO_RPDO_t *RPDO, bool_t syncWas){
     }
     else if(process_rpdo)
     {
-#if defined(RPDO_CALLS_EXTENSION)
+#if (CO_CONFIG_PDO) & CO_CONFIG_RPDO_CALLS_EXTENSION
         bool_t update = false;
-#endif /* defined(RPDO_CALLS_EXTENSION) */
+#endif
 
         uint8_t bufNo = 0;
 
@@ -987,11 +982,11 @@ void CO_RPDO_process(CO_RPDO_t *RPDO, bool_t syncWas){
             for(; i>0; i--) {
                 **(ppODdataByte++) = *(pPDOdataByte++);
             }
-#if defined(RPDO_CALLS_EXTENSION)
+#if (CO_CONFIG_PDO) & CO_CONFIG_RPDO_CALLS_EXTENSION
             update = true;
-#endif /* defined(RPDO_CALLS_EXTENSION) */
+#endif
         }
-#ifdef RPDO_CALLS_EXTENSION
+#if (CO_CONFIG_PDO) & CO_CONFIG_RPDO_CALLS_EXTENSION
         if(update && RPDO->SDO->ODExtensions){
             int16_t i;
             /* for each mapped OD, check mapping to see if an OD extension is available, and call it if it is */

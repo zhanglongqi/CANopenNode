@@ -48,8 +48,7 @@ extern "C" {
 #define CO_CONFIG_NMT (CO_CONFIG_FLAG_CALLBACK_PRE | \
                        CO_CONFIG_FLAG_TIMERNEXT | \
                        CO_CONFIG_NMT_CALLBACK_CHANGE | \
-                       CO_CONFIG_NMT_MASTER | \
-                       CO_CONFIG_NMT_LEDS)
+                       CO_CONFIG_NMT_MASTER)
 #endif
 
 #ifndef CO_CONFIG_SDO
@@ -80,7 +79,9 @@ extern "C" {
 #ifndef CO_CONFIG_PDO
 #define CO_CONFIG_PDO (CO_CONFIG_FLAG_CALLBACK_PRE | \
                        CO_CONFIG_FLAG_TIMERNEXT | \
-                       CO_CONFIG_PDO_SYNC_ENABLE)
+                       CO_CONFIG_PDO_SYNC_ENABLE | \
+                       CO_CONFIG_RPDO_CALLS_EXTENSION | \
+                       CO_CONFIG_TPDO_CALLS_EXTENSION)
 #endif
 
 #ifndef CO_CONFIG_SYNC
@@ -100,25 +101,48 @@ extern "C" {
 #define CO_CONFIG_SDO_CLI_BUFFER_SIZE 1000
 #endif
 
-#ifndef CO_CONFIG_LSS_MST
-#define CO_CONFIG_LSS_MST (CO_CONFIG_FLAG_CALLBACK_PRE)
+#ifndef CO_CONFIG_TIME
+#define CO_CONFIG_TIME (CO_CONFIG_FLAG_CALLBACK_PRE)
+#endif
+
+#ifndef CO_CONFIG_LEDS
+#define CO_CONFIG_LEDS (CO_CONFIG_FLAG_TIMERNEXT | \
+                        CO_CONFIG_LEDS_ENABLE)
+#endif
+
+#ifndef CO_CONFIG_LSS
+#define CO_CONFIG_LSS (CO_CONFIG_FLAG_CALLBACK_PRE | \
+                       CO_CONFIG_LSS_SLAVE | \
+                       CO_CONFIG_LSS_SLAVE_FASTSCAN_DIRECT_RESPOND | \
+                       CO_CONFIG_LSS_MASTER)
 #endif
 
 #ifndef CO_CONFIG_GTW
-#define CO_CONFIG_GTW (CO_CONFIG_GTW_MULTI_NET | \
-                       CO_CONFIG_GTW_ASCII)
+#define CO_CONFIG_GTW (CO_CONFIG_GTW_ASCII | \
+                       CO_CONFIG_GTW_ASCII_SDO | \
+                       CO_CONFIG_GTW_ASCII_NMT | \
+                       CO_CONFIG_GTW_ASCII_LSS | \
+                       CO_CONFIG_GTW_ASCII_LOG | \
+                       CO_CONFIG_GTW_ASCII_ERROR_DESC | \
+                       CO_CONFIG_GTW_ASCII_PRINT_HELP | \
+                       CO_CONFIG_GTW_ASCII_PRINT_LEDS)
+#define CO_CONFIG_GTW_BLOCK_DL_LOOP 1
 #define CO_CONFIG_GTWA_COMM_BUF_SIZE 2000
+#define CO_CONFIG_GTWA_LOG_BUF_SIZE 2000
 #endif
 
 
-/* Basic definitions */
+/* Basic definitions. If big endian, CO_SWAP_xx macros must swap bytes. */
 #define CO_LITTLE_ENDIAN
+#define CO_SWAP_16(x) x
+#define CO_SWAP_32(x) x
+#define CO_SWAP_64(x) x
 /* NULL is defined in stddef.h */
 /* true and false are defined in stdbool.h */
 /* int8_t to uint64_t are defined in stdint.h */
 typedef unsigned char           bool_t;
 typedef float                   float32_t;
-typedef long double             float64_t;
+typedef double                  float64_t;
 typedef char                    char_t;
 typedef unsigned char           oChar_t;
 typedef unsigned char           domain_t;
@@ -153,13 +177,13 @@ typedef struct {
     uint16_t rxSize;
     CO_CANtx_t *txArray;
     uint16_t txSize;
+    uint16_t CANerrorStatus;
     volatile bool_t CANnormal;
     volatile bool_t useCANrxFilters;
     volatile bool_t bufferInhibitFlag;
     volatile bool_t firstCANtxMessage;
     volatile uint16_t CANtxCount;
     uint32_t errOld;
-    void *em;
 } CO_CANmodule_t;
 
 

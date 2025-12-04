@@ -26,12 +26,12 @@
  */
 
 
+#ifndef CO_DRIVER_TARGET
+#define CO_DRIVER_TARGET
+
 /* This file contains device and application specific definitions.
  * It is included from CO_driver.h, which contains documentation
  * for common definitions below. */
-
-#ifndef CO_DRIVER_TARGET
-#define CO_DRIVER_TARGET
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -41,7 +41,7 @@
 #include <linux/can.h>
 #include <net/if.h>
 
-#if __has_include("CO_driver_custom.h")
+#ifdef CO_DRIVER_CUSTOM
 #include "CO_driver_custom.h"
 #endif
 #include "CO_error.h"
@@ -56,8 +56,7 @@ extern "C" {
 #define CO_CONFIG_NMT (CO_CONFIG_FLAG_CALLBACK_PRE | \
                        CO_CONFIG_FLAG_TIMERNEXT | \
                        CO_CONFIG_NMT_CALLBACK_CHANGE | \
-                       CO_CONFIG_NMT_MASTER | \
-                       CO_CONFIG_NMT_LEDS)
+                       CO_CONFIG_NMT_MASTER)
 #endif
 
 #ifndef CO_CONFIG_SDO
@@ -86,7 +85,9 @@ extern "C" {
 #ifndef CO_CONFIG_PDO
 #define CO_CONFIG_PDO (CO_CONFIG_FLAG_CALLBACK_PRE | \
                        CO_CONFIG_FLAG_TIMERNEXT | \
-                       CO_CONFIG_PDO_SYNC_ENABLE)
+                       CO_CONFIG_PDO_SYNC_ENABLE | \
+                       CO_CONFIG_RPDO_CALLS_EXTENSION | \
+                       CO_CONFIG_TPDO_CALLS_EXTENSION)
 #endif
 
 #ifndef CO_CONFIG_SYNC
@@ -106,13 +107,34 @@ extern "C" {
 #define CO_CONFIG_SDO_CLI_BUFFER_SIZE 1000
 #endif
 
-#ifndef CO_CONFIG_LSS_MST
-#define CO_CONFIG_LSS_MST (CO_CONFIG_FLAG_CALLBACK_PRE)
+#ifndef CO_CONFIG_TIME
+#define CO_CONFIG_TIME (CO_CONFIG_FLAG_CALLBACK_PRE)
+#endif
+
+#ifndef CO_CONFIG_LEDS
+#define CO_CONFIG_LEDS (CO_CONFIG_FLAG_TIMERNEXT | \
+                        CO_CONFIG_LEDS_ENABLE)
+#endif
+
+#ifndef CO_CONFIG_LSS
+#define CO_CONFIG_LSS (CO_CONFIG_FLAG_CALLBACK_PRE | \
+                       CO_CONFIG_LSS_SLAVE | \
+                       CO_CONFIG_LSS_SLAVE_FASTSCAN_DIRECT_RESPOND | \
+                       CO_CONFIG_LSS_MASTER)
 #endif
 
 #ifndef CO_CONFIG_GTW
-#define CO_CONFIG_GTW (CO_CONFIG_GTW_ASCII)
+#define CO_CONFIG_GTW (CO_CONFIG_GTW_ASCII | \
+                       CO_CONFIG_GTW_ASCII_SDO | \
+                       CO_CONFIG_GTW_ASCII_NMT | \
+                       CO_CONFIG_GTW_ASCII_LSS | \
+                       CO_CONFIG_GTW_ASCII_LOG | \
+                       CO_CONFIG_GTW_ASCII_ERROR_DESC | \
+                       CO_CONFIG_GTW_ASCII_PRINT_HELP | \
+                       CO_CONFIG_GTW_ASCII_PRINT_LEDS)
+#define CO_CONFIG_GTW_BLOCK_DL_LOOP 3
 #define CO_CONFIG_GTWA_COMM_BUF_SIZE 2000
+#define CO_CONFIG_GTWA_LOG_BUF_SIZE 10000
 #endif
 
 
@@ -169,18 +191,6 @@ extern "C" {
 #define CO_DRIVER_ERROR_REPORTING 1
 #endif
 
-/**
- * Use CANopen Emergency object on CAN RX or TX overflow.
- *
- * If CO_DRIVER_USE_EMERGENCY is set to 1, then CANopen Emergency message will
- * be sent, if CAN rx or tx bufers are overflowed.
- *
- * Macro is set to 1 (enabled) by default. It can be overridden.
- */
-#ifndef CO_DRIVER_USE_EMERGENCY
-#define CO_DRIVER_USE_EMERGENCY 1
-#endif
-
 /* skip this section for Doxygen, because it is documented in CO_driver.h */
 #ifndef CO_DOXYGEN
 
@@ -188,8 +198,15 @@ extern "C" {
 #ifdef __BYTE_ORDER
 #if __BYTE_ORDER == __LITTLE_ENDIAN
     #define CO_LITTLE_ENDIAN
+    #define CO_SWAP_16(x) x
+    #define CO_SWAP_32(x) x
+    #define CO_SWAP_64(x) x
 #else
     #define CO_BIG_ENDIAN
+    #include <byteswap.h>
+    #define CO_SWAP_16(x) bswap_16(x)
+    #define CO_SWAP_32(x) bswap_32(x)
+    #define CO_SWAP_64(x) bswap_64(x)
 #endif
 #endif
 /* #define CO_USE_LEDS */
@@ -198,7 +215,7 @@ extern "C" {
 /* int8_t to uint64_t are defined in stdint.h */
 typedef unsigned char           bool_t;
 typedef float                   float32_t;
-typedef long double             float64_t;
+typedef double                  float64_t;
 typedef char                    char_t;
 typedef unsigned char           oChar_t;
 typedef unsigned char           domain_t;
@@ -275,8 +292,8 @@ typedef struct {
     uint32_t rxDropCount;       /* messages dropped on rx socket queue */
     CO_CANtx_t *txArray;
     uint16_t txSize;
+    uint16_t CANerrorStatus;
     volatile bool_t CANnormal;
-    void *em;
     int fdEvent;                /* notification event file descriptor */
     int fdEpoll;                /* epoll FD for event, CANrx sockets in all
                                    interfaces and fdTimerRead */

@@ -74,18 +74,16 @@ extern "C" {
 #define CO_CONFIG_SDO_CLI_BUFFER_SIZE 32
 #endif
 
-#ifndef CO_CONFIG_LSS_MST
-#define CO_CONFIG_LSS_MST (0)
+#ifndef CO_CONFIG_LSS
+#define CO_CONFIG_LSS (CO_CONFIG_LSS_SLAVE)
+#endif
+
+#ifndef CO_CONFIG_LEDS
+#define CO_CONFIG_LEDS (CO_CONFIG_LEDS_ENABLE)
 #endif
 
 #ifndef CO_CONFIG_GTW
 #define CO_CONFIG_GTW (0)
-#endif
-
-#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
-#ifndef CO_CONFIG_GTWA_COMM_BUF_SIZE
-#define CO_CONFIG_GTWA_COMM_BUF_SIZE 100
-#endif
 #endif
 
 /**
@@ -100,7 +98,7 @@ extern "C" {
  * multiple threads. Reception of CAN messages is pre-processed with very fast
  * functions. Time critical objects, such as PDO or SYNC are processed in
  * real-time thread and other objects are processed in normal thread. See
- * Flowchart in [README.md](README.md) for more information.
+ * Flowchart in [README.md](index.html) for more information.
  *
  * @anchor CO_obj
  * #### CANopenNode Object
@@ -164,6 +162,12 @@ extern "C" {
  */
 /** CO_LITTLE_ENDIAN or CO_BIG_ENDIAN must be defined */
 #define CO_LITTLE_ENDIAN
+/** Macro must swap bytes, if CO_BIG_ENDIAN is defined */
+#define CO_SWAP_16(x) x
+/** Macro must swap bytes, if CO_BIG_ENDIAN is defined */
+#define CO_SWAP_32(x) x
+/** Macro must swap bytes, if CO_BIG_ENDIAN is defined */
+#define CO_SWAP_64(x) x
 /** NULL, for general usage */
 #define NULL (0)
 /** Logical true, for general use */
@@ -191,7 +195,7 @@ typedef unsigned long long int uint64_t;
 /** REAL32 in CANopen (0008h), single precision floating point value, 32-bit */
 typedef float float32_t;
 /** REAL64 in CANopen (0011h), double precision floating point value, 64-bit */
-typedef long double float64_t;
+typedef double float64_t;
 /** VISIBLE_STRING in CANopen (0009h), string of signed 8-bit values */
 typedef char char_t;
 /** OCTET_STRING in CANopen (000Ah), string of unsigned 8-bit values */
@@ -355,6 +359,8 @@ typedef struct {
     uint16_t rxSize;                   /**< From CO_CANmodule_init() */
     CO_CANtx_t *txArray;               /**< From CO_CANmodule_init() */
     uint16_t txSize;                   /**< From CO_CANmodule_init() */
+    uint16_t CANerrorStatus;           /**< CAN error status bitfield,
+                                            see @ref CO_CAN_ERR_status_t */
     volatile bool_t CANnormal;         /**< CAN module is in normal mode */
     volatile bool_t useCANrxFilters;   /**< Value different than zero indicates,
             that CAN module hardware filters are used for CAN reception. If
@@ -369,7 +375,6 @@ typedef struct {
     volatile uint16_t CANtxCount;      /**< Number of messages in transmit
             buffer, which are waiting to be copied to the CAN module */
     uint32_t errOld;                   /**< Previous state of CAN errors */
-    void *em;                          /**< Emergency object */
 } CO_CANmodule_t;
 
 
@@ -377,7 +382,7 @@ typedef struct {
  * @defgroup CO_critical_sections Critical sections
  * @{
  * CANopenNode is designed to run in different threads, as described in
- * [README.md](README.md). Threads are implemented differently in different
+ * [README.md](index.html). Threads are implemented differently in different
  * systems. In microcontrollers threads are interrupts with different
  * priorities, for example. It is necessary to protect sections, where different
  * threads access to the same resource. In simple systems interrupts or
@@ -469,6 +474,30 @@ typedef enum {
 
 
 /**
+ * CAN error status bitmasks.
+ *
+ * CAN warning level is reached, if CAN transmit or receive error counter is
+ * more or equal to 96. CAN passive level is reached, if counters are more or
+ * equal to 128. Transmitter goes in error state 'bus off' if transmit error
+ * counter is more or equal to 256.
+ */
+typedef enum {
+    CO_CAN_ERRTX_WARNING = 0x0001,  /**< 0x0001, CAN transmitter warning */
+    CO_CAN_ERRTX_PASSIVE = 0x0002,  /**< 0x0002, CAN transmitter passive */
+    CO_CAN_ERRTX_BUS_OFF = 0x0004,  /**< 0x0004, CAN transmitter bus off */
+    CO_CAN_ERRTX_OVERFLOW = 0x0008, /**< 0x0008, CAN transmitter overflow */
+
+    CO_CAN_ERRTX_PDO_LATE = 0x0080, /**< 0x0080, TPDO is outside sync window */
+
+    CO_CAN_ERRRX_WARNING = 0x0100,  /**< 0x0100, CAN receiver warning */
+    CO_CAN_ERRRX_PASSIVE = 0x0200,  /**< 0x0200, CAN receiver passive */
+    CO_CAN_ERRRX_OVERFLOW = 0x0800, /**< 0x0800, CAN receiver overflow */
+
+    CO_CAN_ERR_WARN_PASSIVE = 0x0303/**< 0x0303, combination */
+} CO_CAN_ERR_status_t;
+
+
+/**
  * Return values of some CANopen functions. If function was executed
  * successfully it returns 0 otherwise it returns <0.
  */
@@ -497,7 +526,10 @@ typedef enum {
     CO_ERROR_WRONG_NMT_STATE = -16, /**< Command can't be processed in current
                                          state */
     CO_ERROR_SYSCALL = -17,         /**< Syscall failed */
-    CO_ERROR_INVALID_STATE = -18    /**< Driver not ready */
+    CO_ERROR_INVALID_STATE = -18,   /**< Driver not ready */
+    CO_ERROR_NODE_ID_UNCONFIGURED_LSS = -19 /**< Node-id is in LSS unconfigured
+                                         state. If objects are handled properly,
+                                         this may not be an error. */
 } CO_ReturnError_t;
 
 
@@ -633,7 +665,7 @@ CO_ReturnError_t CO_CANsend(CO_CANmodule_t *CANmodule, CO_CANtx_t *buffer);
  * CANopen allows synchronous PDO communication only inside time between SYNC
  * message and SYNC Window. If time is outside this window, new synchronous PDOs
  * must not be sent and all pending sync TPDOs, which may be on CAN TX buffers,
- * must be cleared.
+ * may optionally be cleared.
  *
  * This function checks (and aborts transmission if necessary) CAN TX buffers
  * when it is called. Function should be called by the stack in the moment,
@@ -645,13 +677,14 @@ void CO_CANclearPendingSyncPDOs(CO_CANmodule_t *CANmodule);
 
 
 /**
- * Verify all errors of CAN module.
+ * Process can module - verify CAN errors
  *
- * Function is called directly from CO_EM_process() function.
+ * Function must be called cyclically. It should calculate CANerrorStatus
+ * bitfield for CAN errors defined in @ref CO_CAN_ERR_status_t.
  *
  * @param CANmodule This object.
  */
-void CO_CANverifyErrors(CO_CANmodule_t *CANmodule);
+void CO_CANmodule_process(CO_CANmodule_t *CANmodule);
 
 /** @} */ /* @defgroup CO_driver Driver */
 

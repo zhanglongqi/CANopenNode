@@ -54,7 +54,7 @@ typedef enum {
   CO_LSSmaster_COMMAND_INQUIRE_PRODUCT,
   CO_LSSmaster_COMMAND_INQUIRE_REV,
   CO_LSSmaster_COMMAND_INQUIRE_SERIAL,
-  CO_LSSmaster_COMMAND_INQUIRE_NODE_ID,
+  CO_LSSmaster_COMMAND_INQUIRE,
   CO_LSSmaster_COMMAND_IDENTIFY_FASTSCAN,
 } CO_LSSmaster_command_t;
 
@@ -87,18 +87,11 @@ static void CO_LSSmaster_receive(void *object, void *msg)
        LSSmaster->command!=CO_LSSmaster_COMMAND_WAITING){
 
         /* copy data and set 'new message' flag */
-        LSSmaster->CANrxData[0] = data[0];
-        LSSmaster->CANrxData[1] = data[1];
-        LSSmaster->CANrxData[2] = data[2];
-        LSSmaster->CANrxData[3] = data[3];
-        LSSmaster->CANrxData[4] = data[4];
-        LSSmaster->CANrxData[5] = data[5];
-        LSSmaster->CANrxData[6] = data[6];
-        LSSmaster->CANrxData[7] = data[7];
+        memcpy(LSSmaster->CANrxData, data, sizeof(LSSmaster->CANrxData));
 
         CO_FLAG_SET(LSSmaster->CANrxNew);
 
-#if (CO_CONFIG_LSS_MST) & CO_CONFIG_FLAG_CALLBACK_PRE
+#if (CO_CONFIG_LSS) & CO_CONFIG_FLAG_CALLBACK_PRE
         /* Optional signal to RTOS, which can resume task, which handles further processing. */
         if(LSSmaster->pFunctSignal != NULL) {
             LSSmaster->pFunctSignal(LSSmaster->functSignalObject);
@@ -114,7 +107,7 @@ static void CO_LSSmaster_receive(void *object, void *msg)
  * or after the timeout expired. Only if no message has been received we have
  * to check for timeouts
  */
-static CO_LSSmaster_return_t CO_LSSmaster_check_timeout(
+static inline CO_LSSmaster_return_t CO_LSSmaster_check_timeout(
         CO_LSSmaster_t         *LSSmaster,
         uint32_t                timeDifference_us)
 {
@@ -154,7 +147,7 @@ CO_ReturnError_t CO_LSSmaster_init(
     LSSmaster->timeoutTimer = 0;
     CO_FLAG_CLEAR(LSSmaster->CANrxNew);
     memset(LSSmaster->CANrxData, 0, sizeof(LSSmaster->CANrxData));
-#if (CO_CONFIG_LSS_MST) & CO_CONFIG_FLAG_CALLBACK_PRE
+#if (CO_CONFIG_LSS) & CO_CONFIG_FLAG_CALLBACK_PRE
     LSSmaster->pFunctSignal = NULL;
     LSSmaster->functSignalObject = NULL;
 #endif
@@ -198,7 +191,7 @@ void CO_LSSmaster_changeTimeout(
 }
 
 
-#if (CO_CONFIG_LSS_MST) & CO_CONFIG_FLAG_CALLBACK_PRE
+#if (CO_CONFIG_LSS) & CO_CONFIG_FLAG_CALLBACK_PRE
 /******************************************************************************/
 void CO_LSSmaster_initCallbackPre(
         CO_LSSmaster_t         *LSSmaster,
@@ -716,14 +709,15 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireLssAddress(
 
 
 /******************************************************************************/
-CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
+CO_LSSmaster_return_t CO_LSSmaster_Inquire(
         CO_LSSmaster_t         *LSSmaster,
         uint32_t                timeDifference_us,
-        uint8_t                *nodeId)
+        CO_LSS_cs_t             lssInquireCs,
+        uint32_t               *value)
 {
   CO_LSSmaster_return_t ret = CO_LSSmaster_INVALID_STATE;
 
-  if (LSSmaster==NULL || nodeId==NULL){
+  if (LSSmaster==NULL || value==NULL){
       return CO_LSSmaster_ILLEGAL_ARGUMENT;
   }
 
@@ -732,19 +726,15 @@ CO_LSSmaster_return_t CO_LSSmaster_InquireNodeId(
        LSSmaster->state==CO_LSSmaster_STATE_CFG_GLOBAL) &&
        LSSmaster->command == CO_LSSmaster_COMMAND_WAITING) {
 
-      LSSmaster->command = CO_LSSmaster_COMMAND_INQUIRE_NODE_ID;
+      LSSmaster->command = CO_LSSmaster_COMMAND_INQUIRE;
       LSSmaster->timeoutTimer = 0;
 
-      ret = CO_LSSmaster_inquireInitiate(LSSmaster, CO_LSS_INQUIRE_NODE_ID);
+      ret = CO_LSSmaster_inquireInitiate(LSSmaster, lssInquireCs);
   }
   /* Check for reply */
-  else if (LSSmaster->command == CO_LSSmaster_COMMAND_INQUIRE_NODE_ID) {
-      uint32_t tmp = 0;
-
+  else if (LSSmaster->command == CO_LSSmaster_COMMAND_INQUIRE) {
       ret = CO_LSSmaster_inquireCheckWait(LSSmaster, timeDifference_us,
-              CO_LSS_INQUIRE_NODE_ID, &tmp);
-
-      *nodeId = tmp & 0xff;
+                                          lssInquireCs, value);
   }
 
   if (ret != CO_LSSmaster_WAIT_SLAVE) {
@@ -811,6 +801,8 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsScanInitiate(
         CO_LSSmaster_scantype_t          scan,
         CO_LSS_fastscan_lss_sub_next     lssSub)
 {
+    (void)timeDifference_us;    /* unused */
+
     LSSmaster->fsLssSub = lssSub;
     LSSmaster->fsIdNumber = 0;
 
@@ -900,6 +892,8 @@ static CO_LSSmaster_return_t CO_LSSmaster_FsVerifyInitiate(
         uint32_t                         idNumberCheck,
         CO_LSS_fastscan_lss_sub_next     lssNext)
 {
+    (void)timeDifference_us;    /* unused */
+
     switch (scan) {
         case CO_LSSmaster_FS_SCAN:
             /* ID obtained by scan */

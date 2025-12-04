@@ -38,7 +38,10 @@
 
 
 /* Global variables and objects */
+    volatile static bool_t CANopenConfiguredOK = false; /* Indication if CANopen modules are configured */
     volatile uint16_t   CO_timer1ms = 0U;   /* variable increments each millisecond */
+    uint8_t LED_red, LED_green;
+
 
 
 /* main ***********************************************************************/
@@ -46,6 +49,10 @@ int main (void){
     CO_ReturnError_t err;
     CO_NMT_reset_cmd_t reset = CO_RESET_NOT;
     uint32_t heapMemoryUsed;
+    void *CANmoduleAddress = NULL; /* CAN module address */
+    uint8_t pendingNodeId = 10; /* read from dip switches or nonvolatile memory, configurable by LSS slave */
+    uint8_t activeNodeId = 10; /* Copied from CO_pendingNodeId in the communication reset section */
+    uint16_t pendingBitRate = 125;  /* read from dip switches or nonvolatile memory, configurable by LSS slave */
 
     /* Configure microcontroller. */
 
@@ -73,27 +80,42 @@ int main (void){
 /* CANopen communication reset - initialize CANopen objects *******************/
         uint16_t timer1msPrevious;
 
-        log_printf("CANopenNode - Reset communication\n");
+        log_printf("CANopenNode - Reset communication...\n");
 
         /* disable CAN and CAN interrupts */
+        CANopenConfiguredOK = false;
 
         /* initialize CANopen */
-        err = CO_CANinit(NULL /* CAN module address */, 125 /* bit rate */);
+        err = CO_CANinit(CANmoduleAddress, pendingBitRate);
         if (err != CO_ERROR_NO) {
             log_printf("Error: CAN initialization failed: %d\n", err);
             return 0;
         }
-        err = CO_CANopenInit(10 /* NodeID */);
+        err = CO_LSSinit(&pendingNodeId, &pendingBitRate);
         if(err != CO_ERROR_NO) {
+            log_printf("Error: LSS slave initialization failed: %d\n", err);
+            return 0;
+        }
+        activeNodeId = pendingNodeId;
+        err = CO_CANopenInit(activeNodeId);
+        if(err == CO_ERROR_NO) {
+            CANopenConfiguredOK = true;
+        }
+        else if(err != CO_ERROR_NODE_ID_UNCONFIGURED_LSS) {
             log_printf("Error: CANopen initialization failed: %d\n", err);
             return 0;
-            /* CO_errorReport(CO->em, CO_EM_MEMORY_ALLOCATION_ERROR, CO_EMC_SOFTWARE_INTERNAL, err); */
         }
 
         /* Configure Timer interrupt function for execution every 1 millisecond */
 
 
         /* Configure CAN transmit and receive interrupt */
+
+
+        /* Configure CANopen callbacks, etc */
+        if(CANopenConfiguredOK) {
+
+        }
 
 
         /* start CAN */
@@ -116,6 +138,8 @@ int main (void){
 
             /* CANopen process */
             reset = CO_process(CO, (uint32_t)timer1msDiff*1000, NULL);
+            LED_red = CO_LED_RED(CO->LEDs, CO_LED_CANopen);
+            LED_green = CO_LED_GREEN(CO->LEDs, CO_LED_CANopen);
 
             /* Nonblocking application code may go here. */
 

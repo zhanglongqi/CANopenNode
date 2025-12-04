@@ -34,6 +34,20 @@ extern "C" {
 #endif
 
 
+#if (CO_CONFIG_GTW) & CO_CONFIG_GTW_ASCII
+/**
+ * Command interface type for gateway-ascii
+ */
+typedef enum {
+    CO_COMMAND_IF_DISABLED = -100,
+    CO_COMMAND_IF_STDIO = -2,
+    CO_COMMAND_IF_LOCAL_SOCKET = -1,
+    CO_COMMAND_IF_TCP_SOCKET_MIN = 0,
+    CO_COMMAND_IF_TCP_SOCKET_MAX = 0xFFFF
+} CO_commandInterface_t;
+#endif
+
+
 /**
  * @defgroup CO_socketCAN socketCAN
  * @{
@@ -47,47 +61,14 @@ extern "C" {
  * CANopenNode runs in two threads:
  * - timer based real-time thread for CAN receive, SYNC and PDO, see
  *   CANrx_threadTmr_process()
- * - mainline thread for other processing, see threadMain_process() or
- *   threadMainWait_process()
+ * - mainline thread for other processing, see threadMainWait_process()
  *
  * The "threads" specified here do not fork threads themselves, but require
  * that two threads are provided by the calling application.
- */
-
-
-/**
- * Initialize mainline thread - basic.
  *
- * @param callback this function is called to indicate #threadMain_process() has
- * work to do
- * @param object this pointer is given to _callback()_
+ * Main references for Linux functions used here are Linux man pages and the
+ * book: The Linux Programming Interface by Michael Kerrisk.
  */
-void threadMain_init(void (*callback)(void*), void *object);
-
-
-/**
- * Cleanup mainline thread - basic.
- */
-void threadMain_close(void);
-
-
-/**
- * Process mainline thread - basic.
- *
- * threadMain is non-realtime thread for CANopenNode processing. It is
- * initialized by threadMain_init(). There is no configuration for CANopen
- * objects. There is also no configuration for epool or interval timer or
- * eventfd. These must be specified externally. For more complete function see
- * threadMainWait_process(), they are included.
- *
- * threadMain_process() calls CO_process() function for processing mainline
- * CANopen objects. It is non-blocking and should be called cyclically in 50 ms
- * intervals (typically). Function must also be called immediately after
- * callback provided in threadMain_init() is called.
- *
- * @param reset return value from CO_process() function.
- */
-void threadMain_process(CO_NMT_reset_cmd_t *reset);
 
 
 /**
@@ -95,8 +76,12 @@ void threadMain_process(CO_NMT_reset_cmd_t *reset);
  *
  * Function must be called always in communication reset section, after
  * CO_CANopenInit().
+ *
+ * @param CANopenConfiguredOK True, if node has successfully passed NMT
+ * initialization - it has a valid CANopen node-id, all CANopen objects
+ * are configured and CANopen runs normally.
  */
-void threadMainWait_init(void);
+void threadMainWait_init(bool_t CANopenConfiguredOK);
 
 
 /**
@@ -104,9 +89,15 @@ void threadMainWait_init(void);
  *
  * Function must be called only once, before node starts operating.
  *
- * @param interval_us interval of the threadMainWait_process()
+ * @param interval_us Interval of the threadMainWait_process()
+ * @param commandInterface Command interface type from CO_commandInterface_t
+ * @param socketTimeout_ms Timeout for established socket connection in [ms]
+ * @param localSocketPath File path, if commandInterface is local socket
  */
-void threadMainWait_initOnce(uint32_t interval_us);
+void threadMainWait_initOnce(uint32_t interval_us,
+                             int32_t commandInterface,
+                             uint32_t socketTimeout_ms,
+                             char *localSocketPath);
 
 
 /**
@@ -169,7 +160,7 @@ void CANrx_threadTmr_close(void);
  *
  * @return Number of interval timer passes since last call.
  */
-void CANrx_threadTmr_process(void);
+uint32_t CANrx_threadTmr_process(void);
 
 /** @} */
 
